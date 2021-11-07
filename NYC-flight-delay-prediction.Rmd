@@ -1,0 +1,500 @@
+---
+title: "MK476-Final Project (#7)"
+author: "Gorkem Coklar, Ted Fuller, , "
+date: "4/27/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## NYC FLIGHT DATA
+
+Our Data is ..
+
+We started our project with linear regression and continued with ridge and lasso.
+# REGRESSION MODELS
+```{r REGRESSION MODELS, echo=TRUE}
+library(data.table)
+library(data.table)
+library(ggplot2)
+library(scales)
+library(glmnet)
+
+weather.dd = fread("./weather_description.csv", stringsAsFactors = T)
+flights.dd = fread("./flight_data.csv", stringsAsFactors = T)
+
+# convert -> character -> date
+# note the format is different for the two tables 
+
+flights.dd[, time_hour_s:=as.character(time_hour)]
+flights.dd[, time_hour_dt:=as.POSIXct(time_hour_s, tz="", format="%d/%m/%Y %H:%M")]
+
+weather.dd[, datetime_s:=as.character(datetime)]
+weather.dd[, datetime_dt:=as.POSIXct(datetime_s, tz="", format="%Y-%m-%d %H:%M:00")]
+
+#create new column for weather
+flights.dd[, weather:="unknown"]
+
+#for every unique datetime
+for (dt in unique(flights.dd[, time_hour_dt])) {
+  
+  #look up the weather for that datetime in NY
+  w.weather = weather.dd[datetime_dt==dt, "New York"]
+  
+  #assign that weather to the matching rows in flights
+  flights.dd[time_hour_dt==dt, weather:= w.weather]
+}
+
+#View(flights.dd)
+```
+At first we omitted null variables as follows;
+```{r 2, echo=TRUE}
+dd <- na.omit(flights.dd)
+
+```
+Because weather data is not numerical, we changed it to "factor".
+```{r 3, echo=TRUE}
+dd[, weather:=as.factor(weather)]
+
+dd = dd[weather != "smoke"] #smoke is rare
+dd = dd[weather != "thunderstorm"] #also rare
+
+set.seed(5) #optional, ensures we sample the same rows
+dd[, test:=0]
+dd[sample(nrow(dd), 50000), test:=1] #randomly select 50000 rows for test set
+
+#split
+dd.test <- dd[test==1]
+dd.train <- dd[test==0]
+
+#dd.train.sample.size <- 20000
+#dd.train.sample <- dd.train[sample(nrow(dd.train), dd.train.sample.size)] 
+
+```
+We tried different formulas and used 'Forward Stepwise Selection' as our subset selection method.
+```{r 4, echo=TRUE}
+
+f1 <- as.formula(dep_delay ~ weather + month + day + distance + sched_dep_time + sched_arr_time + air_time ) 
+#f1
+
+x1.train <- model.matrix(f1, dd.train)[, -1] # formula to matrix
+
+y.train<- dd.train$dep_delay
+
+x1.test <- model.matrix(f1, dd.test)[, -1]
+y.test <- dd.test$dep_delay
+
+```
+We fitted linear regression model;
+```{r 5, echo=TRUE}
+
+fit.lm <- lm(f1, dd.train) 
+
+summary(fit.lm)
+
+```
+From summary we can see important variables. However, MSEs for test and train data were higher than we expected, therefore we tried to find outliers.
+```{r 6, echo=TRUE}
+
+yhat.train.lm <- predict(fit.lm)
+mse.train.lm <- mean((y.train - yhat.train.lm)^2) 
+mse.train.lm
+yhat.test.lm <- predict(fit.lm, dd.test)
+mse.test.lm <- mean((y.test - yhat.test.lm)^2)
+mse.test.lm
+
+```
+We found maximum and minimum values of departure delay and tried to leave different portions out of or dataset.
+```{r 7, echo=TRUE}
+dd <- na.omit(flights.dd) #omitted again
+
+dd<-dd[!(dd$dep_delay>60),]
+dd<-dd[!(dd$dep_delay<-15),]
+
+dd[, weather:=as.factor(weather)]
+
+dd = dd[weather != "smoke"]
+dd = dd[weather != "thunderstorm"]
+
+set.seed(5) #optional, ensures we sample the same rows
+dd[, test:=0]
+dd[sample(nrow(dd), 50000), test:=1] #randomly select 50000 rows for test set
+#split
+
+dd.test <- dd[test==1]
+dd.train <- dd[test==0]
+
+f1 <- as.formula(dep_delay ~ weather + month + day + distance + sched_dep_time + sched_arr_time + air_time ) 
+
+x1.train <- model.matrix(f1, dd.train)[, -1] # formula to matrix
+
+y.train<- dd.train$dep_delay
+
+x1.test <- model.matrix(f1, dd.test)[, -1]
+y.test <- dd.test$dep_delay
+
+#Liner regression
+fit.lm <- lm(f1, dd.train) 
+#summary(fit.lm)
+
+yhat.train.lm <- predict(fit.lm)
+mse.train.lm <- mean((y.train - yhat.train.lm)^2) 
+mse.train.lm
+yhat.test.lm <- predict(fit.lm, dd.test)
+mse.test.lm <- mean((y.test - yhat.test.lm)^2)
+mse.test.lm
+
+```
+We applied Ridge regression;
+```{r 8, echo=TRUE}
+#ridge
+fit.ridge <- cv.glmnet(x1.train, y.train, alpha = 0, nfolds = 10)
+help(cv.glmnet)
+fit.ridge
+
+fit.ridge$lambda # all lambda values tried
+fit.ridge$cvm # cross-validation error for each lambda
+
+yhat.train.ridge <- predict(fit.ridge, x1.train, s = fit.ridge$lambda.min)
+mse.train.ridge <- mean((y.train - yhat.train.ridge)^2)
+mse.train.ridge
+
+yhat.test.ridge <- predict(fit.ridge, x1.test, s = fit.ridge$lambda.min)
+mse.test.ridge <- mean((y.test - yhat.test.ridge)^2)
+mse.test.ridge
+```
+And Lasso;
+```{r 9, echo=TRUE}
+#Lasso
+fit.lasso <- cv.glmnet(x1.train, y.train, alpha = 1, nfolds = 10)
+fit.lasso
+
+fit.lasso$lambda # all lambda values tried
+fit.lasso$cvm # cross-validation error for each lambda
+
+yhat.train.lasso <- predict(fit.lasso, x1.train, s = fit.lasso$lambda.min)
+mse.train.lasso <- mean((y.train - yhat.train.lasso)^2)
+mse.train.lasso
+
+yhat.test.lasso <- predict(fit.lasso, x1.test, s = fit.lasso$lambda.min)
+mse.test.lasso <- mean((y.test - yhat.test.lasso)^2)
+mse.test.lasso
+```
+We can see all the test MSEs as follows;
+```{r 10, echo=TRUE}
+mse.test.lm
+mse.test.ridge
+mse.test.lasso
+```
+So, our prediction's accuracy is +/- 13 min. With best MSE in Lasso then Ridge and Linear regression consecutively.
+
+Also, instead of omittingnull variables we used replacing them with column means and medians but result wasn't significantly different. However, when we change the portion we leave out of our dataset we got better MSEs but lost a lot of our data.
+```{r 11, echo=TRUE}
+dd <- na.omit(flights.dd)
+
+dd<-dd[!(dd$dep_delay>30),]
+dd<-dd[!(dd$dep_delay<0),]
+
+dd[, weather:=as.factor(weather)]
+
+dd = dd[weather != "smoke"]
+dd = dd[weather != "thunderstorm"]
+
+set.seed(5) #optional, ensures we sample the same rows
+dd[, test:=0]
+dd[sample(nrow(dd), 5000), test:=1] #randomly select 50000 rows for test set
+#split
+dd.test <- dd[test==1]
+dd.train <- dd[test==0]
+
+dd.train.sample.size <- 10000
+dd.train.sample <- dd.train[sample(nrow(dd.train), dd.train.sample.size)] 
+
+f1 <- as.formula(dep_delay ~ weather + month + day + distance + sched_dep_time + sched_arr_time + air_time ) 
+
+x1.train.sample <- model.matrix(f1, dd.train.sample)[, -1] # formula to matrix
+
+y.train.sample <- dd.train.sample$dep_delay
+
+x1.test <- model.matrix(f1, dd.test)[, -1]
+y.test <- dd.test$dep_delay
+
+#Linear regression from train sample
+fit.lm <- lm(f1, dd.train.sample) 
+
+yhat.train.lm <- predict(fit.lm)
+mse.train.lm <- mean((y.train.sample - yhat.train.lm)^2) 
+mse.train.lm
+yhat.test.lm <- predict(fit.lm, dd.test)
+mse.test.lm <- mean((y.test - yhat.test.lm)^2)
+mse.test.lm
+
+```
+Now, it is about +/- 8 minutes. It has better predictions but we continued with our initial dataset to not to lose big portion of our data.
+```
+# DECISION TREE
+```
+For the decision tree, we continued with or existing formula and played with the "cp" value in the rpart.coontrol.
+```{r Decision Tree, echo=TRUE}
+library(data.table)
+library(ggplot2)
+library(scales)
+library(rpart) #this package fits trees
+theme_set(theme_bw())
+
+weather.dd = fread("./weather_description.csv", stringsAsFactors = T)
+flights.dd = fread("./flight_data.csv", stringsAsFactors = T)
+
+# convert -> character -> date
+# note the format is different for the two tables 
+
+flights.dd[, time_hour_s:=as.character(time_hour)]
+flights.dd[, time_hour_dt:=as.POSIXct(time_hour_s, tz="", format="%d/%m/%Y %H:%M")]
+
+weather.dd[, datetime_s:=as.character(datetime)]
+weather.dd[, datetime_dt:=as.POSIXct(datetime_s, tz="", format="%Y-%m-%d %H:%M:00")]
+
+#create new column for weather
+flights.dd[, weather:="unknown"]
+
+#for every unique datetime
+for (dt in unique(flights.dd[, time_hour_dt])) {
+  
+  #look up the weather for that datetime in NY
+  w.weather = weather.dd[datetime_dt==dt, "New York"]
+  
+  #assign that weather to the matching rows in flights
+  flights.dd[time_hour_dt==dt, weather:= w.weather]
+}
+
+dd <- na.omit(flights.dd)
+
+dd<-dd[!(dd$dep_delay>60),]
+dd<-dd[!(dd$dep_delay<-15),]
+
+dd[, weather:=as.factor(weather)]
+
+set.seed(5) #optional, ensures we sample the same rows
+dd[, test:=0]
+dd[sample(nrow(dd), 50000), test:=1] #
+
+dd.test <- dd[test==1]
+dd.train <- dd[test==0]
+
+y.test <- dd.test$dep_delay
+
+#dd.train.sample.size <- 5000
+#dd.train.sample <- dd.train[sample(nrow(dd.train), dd.train.sample.size)]
+y.train <- dd.train$dep_delay
+
+f1 <- as.formula(dep_delay ~ weather + month + day + distance + sched_dep_time + sched_arr_time + air_time + origin ) 
+
+fit.tree <- rpart(f1,
+                  dd.train,
+                  method = "anova",
+                  control = rpart.control(cp = 0.01))
+
+par(xpd = TRUE)
+plot(fit.tree, compress=TRUE)
+text(fit.tree, use.n=TRUE)
+
+```
+As you can see, our MSEs are slightly bigger but still similar to the ones we gather from linear regression models.
+```{r Decision Tree 2, echo=TRUE}
+
+yhat.tree <- predict(fit.tree, dd.train)
+mse.tree <- mean((yhat.tree - y.train)^ 2)
+mse.tree
+yhat.tree.test <- predict(fit.tree, dd.test)
+mse.tree.test <- mean((yhat.tree.test - y.test)^ 2)
+mse.tree.test 
+```
+```{r Decision Tree 4, echo=FALSE}
+summary(fit.tree)
+
+library(partykit) # this allows some prettier plots
+plot(as.party(fit.tree))
+
+fit.tree.cv <- rpart(weather ~ dep_delay + arr_delay + month + carrier + distance,
+                     dd.train.sample)
+
+plotcp(fit.tree) 
+printcp(fit.tree) # display the results in text form
+## create additional plots
+par(mfrow=c(1,2)) # two plots on one page
+rsq.rpart(fit.tree)
+
+```
+# RANDOM FOREST
+```
+For the random forest, we also continued with or existing formula and played with the number of trees. However, increase in the number of trees didn't create a significant difference in the overall model.
+```{r RANDOM FOREST, echo=FALSE}
+#Random Forest
+library(data.table)
+library(ggplot2)
+library(scales)
+#install.packages("randomForest")
+library(randomForest) #this package trains random forests
+theme_set(theme_bw())
+
+weather.dd = fread("./weather_description.csv", stringsAsFactors = T)
+flights.dd = fread("./flight_data.csv", stringsAsFactors = T)
+
+# convert -> character -> date
+# note the format is different for the two tables 
+
+flights.dd[, time_hour_s:=as.character(time_hour)]
+flights.dd[, time_hour_dt:=as.POSIXct(time_hour_s, tz="", format="%d/%m/%Y %H:%M")]
+
+weather.dd[, datetime_s:=as.character(datetime)]
+weather.dd[, datetime_dt:=as.POSIXct(datetime_s, tz="", format="%Y-%m-%d %H:%M:00")]
+
+#create new column for weather
+flights.dd[, weather:="unknown"]
+
+#for every unique datetime
+for (dt in unique(flights.dd[, time_hour_dt])) {
+  
+  #look up the weather for that datetime in NY
+  w.weather = weather.dd[datetime_dt==dt, "New York"]
+  
+  #assign that weather to the matching rows in flights
+  flights.dd[time_hour_dt==dt, weather:= w.weather]
+}
+
+#View(flights.dd)
+
+dd <- na.omit(flights.dd)
+
+dd<-dd[!(dd$dep_delay>60),]
+dd<-dd[!(dd$dep_delay<-15),]
+
+dd[, weather:=as.factor(weather)]
+```
+```{r RANDOM FOREST 2, echo=TRUE}
+
+set.seed(5) #optional, ensures we sample the same rows
+dd[, test:=0]
+dd[sample(nrow(dd), 50000), test:=1] #randomly select 50000 rows for test set
+#split
+dd.test <- dd[test==1]
+dd.train <- dd[test==0]
+y.test <- dd.test$dep_delay
+
+#dd.train.sample.size <- 5000
+#dd.train.sample <- dd.train[sample(nrow(dd.train), dd.train.sample.size)]
+y.train <- dd.train$dep_delay
+
+f1 <- as.formula(dep_delay ~ weather + month + day + distance + sched_dep_time + sched_arr_time + air_time ) 
+#f1
+fit.rndfor <- randomForest( f1,
+                            dd.train,
+                            do.trace = 0,
+                            ntree=600,
+                            importance=TRUE)
+plot(fit.rndfor)
+
+importance(fit.rndfor)
+
+```
+As you can see in here, our test MSE is very similar to the other models.
+```{r RANDOM FOREST 3  , echo=TRUE}
+yhat.rndfor <- predict(fit.rndfor)
+mse.rndfor <- mean((yhat.rndfor - y.train) ^ 2)
+
+yhat.rndfor.test <- predict(fit.rndfor, dd.test)
+mse.rndfor.test <- mean((yhat.rndfor.test - y.test)^ 2)
+mse.rndfor.test
+
+```
+# BOOSTING
+```
+Again for the boosting, we continued with or existing formula. Also, we played with the number of trees and shrinkage parameter. When we increase the number of trees we get smaller test errors.
+```{r BOOSTING , echo=FALSE}
+
+library(data.table)
+library(ggplot2)
+library(scales)
+library(gbm)  #this package fits trees
+theme_set(theme_bw())
+
+weather.dd = fread("./weather_description.csv", stringsAsFactors = T)
+flights.dd = fread("./flight_data.csv", stringsAsFactors = T)
+
+# convert -> character -> date
+# note the format is different for the two tables 
+
+flights.dd[, time_hour_s:=as.character(time_hour)]
+flights.dd[, time_hour_dt:=as.POSIXct(time_hour_s, tz="", format="%d/%m/%Y %H:%M")]
+
+weather.dd[, datetime_s:=as.character(datetime)]
+weather.dd[, datetime_dt:=as.POSIXct(datetime_s, tz="", format="%Y-%m-%d %H:%M:00")]
+
+#create new column for weather
+flights.dd[, weather:="unknown"]
+
+#for every unique datetime
+for (dt in unique(flights.dd[, time_hour_dt])) {
+  
+  #look up the weather for that datetime in NY
+  w.weather = weather.dd[datetime_dt==dt, "New York"]
+  
+  #assign that weather to the matching rows in flights
+  flights.dd[time_hour_dt==dt, weather:= w.weather]
+}
+
+
+dd <- na.omit(flights.dd)
+
+dd<-dd[!(dd$dep_delay>60),]
+dd<-dd[!(dd$dep_delay<-15),]
+
+dd[, weather:=as.factor(weather)]
+```
+```{r BOOSTING 2, echo=TRUE}
+
+set.seed(5) #optional, ensures we sample the same rows
+dd[, test:=0]
+dd[sample(nrow(dd), 50000), test:=1] #randomly select 50000 rows for test set
+#split
+dd.test <- dd[test==1]
+dd.train <- dd[test==0]
+y.test <- dd.test$dep_delay
+#dd.train.sample.size <- 5000
+#dd.train.sample <- dd.train[sample(nrow(dd.train), dd.train.sample.size)]
+y.train <- dd.train$dep_delay
+
+f1 <- as.formula(dep_delay ~ weather + month + day + distance + sched_dep_time + sched_arr_time + air_time + origin ) 
+
+fit.btree <- gbm(f1,
+                 data = dd.train,
+                 distribution = "gaussian",
+                 n.trees = 8000,
+                 interaction.depth = 2,
+                 shrinkage = 0.01)
+
+gbm.perf(fit.btree)
+
+yhat.btree.5000 <- predict(fit.btree, n.trees = gbm.perf(fit.btree, plot.it = FALSE))
+mse.btree <- mean((yhat.btree.5000 - y.train) ^ 2)
+
+#tree numbers to plot
+n.trees = seq(from=100 ,to=8000, by=100)
+#Generating a prediction matrix
+yhat.test.matrix <- predict(fit.btree,
+                            dd.test,
+                            n.trees = n.trees)
+# Calculating MSE on entire matrix of predictions
+test.error<-with(dd.test, apply( (yhat.test.matrix - arr_delay)^2,2,mean))
+# head(test.error) #inspect test error
+test.error
+# Plotting the test error vs number of trees
+plot( n.trees , test.error,
+      pch=19, col="blue",
+      xlab="Number of Trees",
+      ylab="Test Error",
+      main = "Performance of Boosting on Test Set")
+
+```

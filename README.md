@@ -1,17 +1,17 @@
-# NYC-flight-delay-prediction
+# NYC Flight Delay Prediction
 
 This project was prepared as part of the Machine Learning for Business Analytics course <a href="https://www.bu.edu/academics/questrom/courses/qst-ba-476/">MK 476</a> at Boston University in 2020. 
-The aim of the project is to predict flight delay according to weather condition in New York City in 2013 by applying various machine learning techniques.
+The aim of the project is to predict flight delay according to weather conditions in New York City in 2013 by applying various machine learning techniques.
 
 ## Data
 <img width="902" alt="NYCFlightsData" src="https://user-images.githubusercontent.com/45122094/140771252-bec7d4a3-700a-4d65-8d96-dfb51108fe8e.png">
 
 The data is acquired from <a href="https://www.kaggle.com/aephidayatuloh/nyc-flights-2013">Kaggle</a>. It contains 19 columns and 336k rows.
-Fro the weather a seperate dataset is used because it provided a weather classification for each hour, 
+For the weather, a seperate dataset is used because it provided a weather classification for each hour, 
 rather than raw numerical data such as temperature, humidity, barometric pressure which is hard to interpret.
-This weather data set was aquired using Weather API on the <a href="https://openweathermap.org/apiwebsite">OpenWeatherMap </a> and is available under the ODbL License. 
+This weather data set was acquired using Weather API on the <a href="https://openweathermap.org/apiwebsite">OpenWeatherMap </a> and is available under the ODbL License. 
 Data is cleaned by omitting rows with null values and removing outliers. After na.omit function, the dataset is reduced to 127K rows of data, 
-and after remowing the outliers by using quantile and iqr functions, the dataset reduced to 110K.
+and after removing the outliers by using quantile and iqr functions, the dataset reduced to 110K.
 
 ## Models
 Forward stepwise selection is used for the subset selection. Final model included the folowing features:
@@ -20,7 +20,7 @@ On this splitted data, several machine learning techniques are applied.
 
 
 ### 1. Linear Regression
-With the features decided, a linear regression model is applied. Mean quared error of this model corresponded to 87.6 which is approximately 9.4 minutes error margin.
+With the features decided, a linear regression model is applied. Mean squared error of this model corresponded to 87.6 which is approximately 9.4 minutes error margin.
 
 ```r
 yhat.test.lm <- predict(fit.lm, dd.test)
@@ -34,7 +34,7 @@ To gain better results regularization techniques are applied on this linear mode
 
 ### 2. Ridge Regression
 
-As of L2 regularization, ridge regression performed similar output with slightly better mse score. Mean quared error of this model corresponded to 87.5 which is approximately 9.4 minutes error margin. 
+As of L2 regularization, ridge regression performed similar output with slightly better mse score. Mean squared error of this model corresponded to 87.5 which is approximately 9.4 minutes error margin. 
 
 ```r
 yhat.test.ridge <- predict(fit.ridge, x1.test, s = fit.ridge$lambda.min)
@@ -46,7 +46,7 @@ mse.test.ridge
 
 ### 3. Lasso Regression
 
-As of L1 regularization, lasso regression again performed similar output with slightly better mse score than linear regression but worse than ridge regression as expected. Mean quared error of this model corresponded to 87.5 which is approximately 9.4 minutes error margin. 
+As of L1 regularization, lasso regression again performed similar output with slightly better mse score than linear regression but worse than ridge regression as expected. Mean squared error of this model corresponded to 87.5 which is approximately 9.4 minutes error margin. 
 
 ```r
 yhat.test.lasso <- predict(fit.lasso, x1.test, s = fit.lasso$lambda.min)
